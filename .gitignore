@@ -3,6 +3,9 @@ GLOSSARY.md
 DESIGN.md
 docs/
 
+# Local-only MCP config (points at local Home Assistant instance)
+.mcp.json
+
 # Python / HA dev
 __pycache__/
 *.pyc
