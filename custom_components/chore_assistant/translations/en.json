@@ -1,0 +1,114 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Chore Assistant",
+        "description": "Set up Chore Assistant. Members and chores are managed afterwards from the integration's Configure menu."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Chore Assistant is already configured. Only one household is supported."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Chore Assistant",
+        "menu_options": {
+          "add_member": "Add member",
+          "remove_member": "Remove member",
+          "add_chore": "Add chore",
+          "remove_chore": "Remove chore"
+        }
+      },
+      "add_member": {
+        "title": "Add member",
+        "data": {
+          "name": "Name",
+          "person_entity_id": "Linked person"
+        }
+      },
+      "remove_member": {
+        "title": "Remove member",
+        "data": { "member_id": "Member" }
+      },
+      "add_chore": {
+        "title": "Add chore",
+        "data": {
+          "name": "Name",
+          "assignee": "Assignee",
+          "frequency": "Frequency",
+          "weekdays": "Weekdays (weekly)",
+          "day_of_month": "Day of month (monthly)",
+          "interval": "Interval (interval)",
+          "interval_unit": "Interval unit (interval)",
+          "anchor_date": "Start / anchor date",
+          "due_time": "Due time",
+          "description": "Description / steps"
+        }
+      },
+      "remove_chore": {
+        "title": "Remove chore",
+        "data": { "chore_id": "Chore" }
+      }
+    }
+  },
+  "services": {
+    "complete": {
+      "name": "Complete chore",
+      "description": "Mark a chore's current occurrence complete and generate the next one.",
+      "fields": {
+        "chore_id": { "name": "Chore ID", "description": "The chore to complete." },
+        "completed_by": { "name": "Completed by", "description": "Member ID to credit. Defaults to the assignee." }
+      }
+    },
+    "skip": {
+      "name": "Skip chore",
+      "description": "Advance to the next occurrence without recording a completion.",
+      "fields": {
+        "chore_id": { "name": "Chore ID", "description": "The chore to skip." }
+      }
+    },
+    "reassign": {
+      "name": "Reassign chore",
+      "description": "Change which member a chore is assigned to.",
+      "fields": {
+        "chore_id": { "name": "Chore ID", "description": "The chore to reassign." },
+        "member_id": { "name": "Member ID", "description": "The new assignee." }
+      }
+    },
+    "create_chore": {
+      "name": "Create chore",
+      "description": "Create a new recurring chore.",
+      "fields": {
+        "name": { "name": "Name", "description": "Chore name." },
+        "assignee": { "name": "Assignee", "description": "Member ID." },
+        "description": { "name": "Description", "description": "Free-text steps." },
+        "frequency": { "name": "Frequency", "description": "daily, weekly, monthly, or interval." },
+        "due_time": { "name": "Due time", "description": "Time of day the chore is due." },
+        "anchor_date": { "name": "Start date", "description": "First eligible date / phase anchor." },
+        "weekdays": { "name": "Weekdays", "description": "0=Mon .. 6=Sun (weekly)." },
+        "day_of_month": { "name": "Day of month", "description": "1-31 (monthly)." },
+        "interval": { "name": "Interval", "description": "Every N units (interval)." },
+        "interval_unit": { "name": "Interval unit", "description": "days or weeks (interval)." }
+      }
+    },
+    "update_chore": {
+      "name": "Update chore",
+      "description": "Update an existing chore's name, assignee, or description.",
+      "fields": {
+        "chore_id": { "name": "Chore ID", "description": "The chore to update." },
+        "name": { "name": "Name", "description": "New name." },
+        "assignee": { "name": "Assignee", "description": "New assignee member ID." },
+        "description": { "name": "Description", "description": "New free-text steps." }
+      }
+    },
+    "delete_chore": {
+      "name": "Delete chore",
+      "description": "Permanently delete a chore and its open occurrence.",
+      "fields": {
+        "chore_id": { "name": "Chore ID", "description": "The chore to delete." }
+      }
+    }
+  }
+}
