@@ -1,0 +1,11 @@
+# Local-only design/domain docs — never push to the public repo
+GLOSSARY.md
+DESIGN.md
+docs/
+
+# Python / HA dev
+__pycache__/
+*.pyc
+.venv/
+venv/
+.DS_Store

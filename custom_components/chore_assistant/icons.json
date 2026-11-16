@@ -1,0 +1,10 @@
+{
+  "services": {
+    "complete": { "service": "mdi:check-circle" },
+    "skip": { "service": "mdi:skip-next" },
+    "reassign": { "service": "mdi:account-switch" },
+    "create_chore": { "service": "mdi:playlist-plus" },
+    "update_chore": { "service": "mdi:playlist-edit" },
+    "delete_chore": { "service": "mdi:playlist-remove" }
+  }
+}

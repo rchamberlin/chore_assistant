@@ -1,0 +1,7 @@
+# Standalone unit tests (recurrence math + serialization) need only pytest.
+pytest>=8.0
+
+# For the HA-dependent layers (coordinator, todo/calendar/sensor platforms,
+# config/options flow) add Home Assistant's custom-component test harness and
+# write tests against its fixtures:
+# pytest-homeassistant-custom-component

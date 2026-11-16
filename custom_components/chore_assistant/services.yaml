@@ -1,0 +1,128 @@
+complete:
+  name: Complete chore
+  description: Mark a chore's current occurrence complete and generate the next one.
+  fields:
+    chore_id:
+      name: Chore ID
+      required: true
+      selector:
+        text:
+    completed_by:
+      name: Completed by (member ID)
+      description: Credit a specific member. Defaults to the assignee.
+      selector:
+        text:
+
+skip:
+  name: Skip chore
+  description: Advance to the next occurrence without recording a completion.
+  fields:
+    chore_id:
+      name: Chore ID
+      required: true
+      selector:
+        text:
+
+reassign:
+  name: Reassign chore
+  description: Change which member a chore is assigned to.
+  fields:
+    chore_id:
+      name: Chore ID
+      required: true
+      selector:
+        text:
+    member_id:
+      name: Member ID
+      selector:
+        text:
+
+create_chore:
+  name: Create chore
+  description: Create a new recurring chore.
+  fields:
+    name:
+      name: Name
+      required: true
+      selector:
+        text:
+    assignee:
+      name: Assignee (member ID)
+      selector:
+        text:
+    description:
+      name: Description / steps
+      selector:
+        text:
+          multiline: true
+    frequency:
+      name: Frequency
+      selector:
+        select:
+          options: [daily, weekly, monthly, interval]
+    due_time:
+      name: Due time
+      selector:
+        time:
+    anchor_date:
+      name: Start / anchor date
+      selector:
+        date:
+    weekdays:
+      name: Weekdays (0=Mon .. 6=Sun, weekly only)
+      selector:
+        select:
+          multiple: true
+          options: ["0", "1", "2", "3", "4", "5", "6"]
+    day_of_month:
+      name: Day of month (monthly only)
+      selector:
+        number:
+          min: 1
+          max: 31
+          mode: box
+    interval:
+      name: Interval (interval only)
+      selector:
+        number:
+          min: 1
+          max: 52
+          mode: box
+    interval_unit:
+      name: Interval unit (interval only)
+      selector:
+        select:
+          options: [days, weeks]
+
+update_chore:
+  name: Update chore
+  description: Update an existing chore's name, assignee, or description.
+  fields:
+    chore_id:
+      name: Chore ID
+      required: true
+      selector:
+        text:
+    name:
+      name: Name
+      selector:
+        text:
+    assignee:
+      name: Assignee (member ID)
+      selector:
+        text:
+    description:
+      name: Description / steps
+      selector:
+        text:
+          multiline: true
+
+delete_chore:
+  name: Delete chore
+  description: Permanently delete a chore and its open occurrence.
+  fields:
+    chore_id:
+      name: Chore ID
+      required: true
+      selector:
+        text:

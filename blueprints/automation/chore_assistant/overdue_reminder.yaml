@@ -1,0 +1,31 @@
+blueprint:
+  name: Chore Assistant - Overdue reminder
+  description: >
+    Notify the assigned member when one of their chores goes overdue.
+    Fires on the `chore_assistant_overdue` event, which carries the chore name
+    and the assignee's linked person. Point the notify action at your mobile
+    app or a notify group.
+  domain: automation
+  input:
+    notify_service:
+      name: Notify service
+      description: The notify service to call (e.g. notify.mobile_app_phone).
+      selector:
+        text:
+
+trigger:
+  - platform: event
+    event_type: chore_assistant_overdue
+
+action:
+  - service: !input notify_service
+    data:
+      title: "Chore overdue"
+      message: >
+        {{ trigger.event.data.chore_name }} is overdue
+        {% if trigger.event.data.member_name %}
+        (assigned to {{ trigger.event.data.member_name }})
+        {% endif %}.
+
+mode: queued
+max: 25
