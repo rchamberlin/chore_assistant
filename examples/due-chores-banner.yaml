@@ -1,25 +1,25 @@
 # Due / overdue chores banner (Lovelace card)
 #
 # A dashboard banner that appears above your person cards whenever a chore is
-# due tomorrow, due today, or overdue — and hides itself otherwise.
+# due tomorrow, due today, or overdue — and hides itself otherwise. It lists
+# EVERY such chore (grouped overdue → today → tomorrow), coloured by the
+# highest severity present.
 #
-#   yellow  (#fdd835)  a chore is due tomorrow
-#   orange  (#fb8c00)  a chore is due today
-#   red     (#e53935)  a chore is overdue        (highest severity wins)
+#   yellow  (#fdd835)  something is due tomorrow (nothing sooner)
+#   orange  (#fb8c00)  something is due today
+#   red     (#e53935)  something is overdue             (highest wins)
 #
-# It scans every `sensor.*_overdue_chores` entity (the per-member sensors this
-# integration creates), so new members are picked up automatically with no
-# edits here. (We match on entity_id rather than filtering the attributes dict,
-# because selectattr through `.attributes` fails in HA's template sandbox.)
+# Data source: each `sensor.*_overdue_chores` entity this integration creates
+# exposes an `items` attribute — a list of {chore_id, name, due} for that
+# member's open chores. New members are picked up automatically.
 #
 # Requirements:
 #   - card_mod (HACS "lovelace-card-mod") for the templated background colour.
+#   - The integration's sensor must expose `items` (HA restart after upgrading).
 #
-# Install:
-#   Paste the first card below as the FIRST card in your view, above the
-#   person cards. The second card (clearly marked) is a static preview that
-#   forces the banner visible so you can check the styling before anything is
-#   actually due.
+# Install: paste the LIVE CARD below as the first card in your view, above the
+# person cards. The STATIC PREVIEW (commented, at the bottom) forces the banner
+# visible so you can check the styling before anything is actually due.
 
 ###############################################################################
 # LIVE CARD — use this one.
@@ -30,54 +30,61 @@ visibility:
     value_template: >-
       {%- set ids = states.sensor | map(attribute='entity_id') | select('match', '.*_overdue_chores$') | list -%}
       {%- set tmrw = (now() + timedelta(days=1)).date().isoformat() -%}
-      {%- set ns = namespace(overdue=0, today=0, tomorrow=0) -%}
+      {%- set ns = namespace(hit=false) -%}
       {%- for id in ids -%}
-        {%- set ns.overdue = ns.overdue + (states(id) | int(0)) -%}
-        {%- set ns.today = ns.today + (state_attr(id, 'due_today') | int(0)) -%}
-        {%- set nd = state_attr(id, 'next_due') -%}
-        {%- if nd and nd[:10] == tmrw %}{% set ns.tomorrow = ns.tomorrow + 1 %}{% endif -%}
+        {%- for item in state_attr(id, 'items') or [] -%}
+          {%- if (item['due'] | string)[:10] <= tmrw %}{% set ns.hit = true %}{% endif -%}
+        {%- endfor -%}
       {%- endfor -%}
-      {{ ns.overdue > 0 or ns.today > 0 or ns.tomorrow > 0 }}
+      {{ ns.hit }}
 content: >-
   {%- set ids = states.sensor | map(attribute='entity_id') | select('match', '.*_overdue_chores$') | list -%}
   {%- set tdy = now().date().isoformat() -%}
   {%- set tmrw = (now() + timedelta(days=1)).date().isoformat() -%}
-  {%- set ns = namespace(overdue=0, today=0, tomorrow=0, lines=[]) -%}
+  {%- set ns = namespace(overdue=[], today=[], tomorrow=[]) -%}
   {%- for id in ids -%}
-    {%- set ns.overdue = ns.overdue + (states(id) | int(0)) -%}
-    {%- set ns.today = ns.today + (state_attr(id, 'due_today') | int(0)) -%}
-    {%- set nd = state_attr(id, 'next_due') -%}
-    {%- if nd and nd[:10] == tmrw %}{% set ns.tomorrow = ns.tomorrow + 1 %}{% endif -%}
+    {%- set member = state_attr(id, 'friendly_name') | replace(' overdue chores', '') -%}
+    {%- for item in state_attr(id, 'items') or [] -%}
+      {%- set due = (item['due'] | string)[:10] -%}
+      {%- if due < tdy -%}
+        {%- set ns.overdue = ns.overdue + [(member, item['name'])] -%}
+      {%- elif due == tdy -%}
+        {%- set ns.today = ns.today + [(member, item['name'])] -%}
+      {%- elif due == tmrw -%}
+        {%- set ns.tomorrow = ns.tomorrow + [(member, item['name'])] -%}
+      {%- endif -%}
+    {%- endfor -%}
   {%- endfor -%}
-  {%- if ns.overdue > 0 -%}
-    {%- set ns.lines = ['### 🔴 ' ~ ns.overdue ~ ' chore' ~ ('s' if ns.overdue > 1 else '') ~ ' overdue'] -%}
-  {%- elif ns.today > 0 -%}
-    {%- set ns.lines = ['### 🟠 ' ~ ns.today ~ ' chore' ~ ('s' if ns.today > 1 else '') ~ ' due today'] -%}
+  {%- if ns.overdue -%}
+    {%- set head = '### 🔴 ' ~ (ns.overdue | count) ~ ' chore' ~ ('s' if ns.overdue | count > 1 else '') ~ ' overdue' -%}
+  {%- elif ns.today -%}
+    {%- set head = '### 🟠 ' ~ (ns.today | count) ~ ' chore' ~ ('s' if ns.today | count > 1 else '') ~ ' due today' -%}
   {%- else -%}
-    {%- set ns.lines = ['### 🟡 ' ~ ns.tomorrow ~ ' chore' ~ ('s' if ns.tomorrow > 1 else '') ~ ' due tomorrow'] -%}
+    {%- set head = '### 🟡 ' ~ (ns.tomorrow | count) ~ ' chore' ~ ('s' if ns.tomorrow | count > 1 else '') ~ ' due tomorrow' -%}
   {%- endif -%}
-  {%- for id in ids -%}
-    {%- set name = state_attr(id, 'friendly_name') | replace(' overdue chores', '') -%}
-    {%- set od = states(id) | int(0) -%}
-    {%- set nd = state_attr(id, 'next_due') -%}
-    {%- set chore = state_attr(id, 'next_chore') -%}
-    {%- if od > 0 -%}
-      {%- set ns.lines = ns.lines + ['- **' ~ name ~ ':** ' ~ chore ~ ' — overdue'] -%}
-    {%- elif nd and nd[:10] == tdy -%}
-      {%- set ns.lines = ns.lines + ['- **' ~ name ~ ':** ' ~ chore ~ ' — due today'] -%}
-    {%- elif nd and nd[:10] == tmrw -%}
-      {%- set ns.lines = ns.lines + ['- **' ~ name ~ ':** ' ~ chore ~ ' — due tomorrow'] -%}
-    {%- endif -%}
+  {%- set out = namespace(lines=[head]) -%}
+  {%- for e in ns.overdue -%}
+    {%- set out.lines = out.lines + ['- **' ~ e[0] ~ ':** ' ~ e[1] ~ ' — overdue'] -%}
   {%- endfor -%}
-  {{ ns.lines | join('\n') }}
+  {%- for e in ns.today -%}
+    {%- set out.lines = out.lines + ['- **' ~ e[0] ~ ':** ' ~ e[1] ~ ' — due today'] -%}
+  {%- endfor -%}
+  {%- for e in ns.tomorrow -%}
+    {%- set out.lines = out.lines + ['- **' ~ e[0] ~ ':** ' ~ e[1] ~ ' — due tomorrow'] -%}
+  {%- endfor -%}
+  {{ out.lines | join('\n') }}
 card_mod:
   style: |
     ha-card {
       {% set ids = states.sensor | map(attribute='entity_id') | select('match', '.*_overdue_chores$') | list %}
+      {% set tdy = now().date().isoformat() %}
       {% set ns = namespace(overdue=0, today=0) %}
       {% for id in ids %}
-        {% set ns.overdue = ns.overdue + (states(id) | int(0)) %}
-        {% set ns.today = ns.today + (state_attr(id, 'due_today') | int(0)) %}
+        {% for item in state_attr(id, 'items') or [] %}
+          {% set due = (item['due'] | string)[:10] %}
+          {% if due < tdy %}{% set ns.overdue = ns.overdue + 1 %}
+          {% elif due == tdy %}{% set ns.today = ns.today + 1 %}{% endif %}
+        {% endfor %}
       {% endfor %}
       background: {% if ns.overdue > 0 %}#e53935{% elif ns.today > 0 %}#fb8c00{% else %}#fdd835{% endif %} !important;
     }
@@ -93,8 +100,8 @@ card_mod:
 # type: markdown
 # content: |
 #   ### 🟠 2 chores due today
-#   - **Alex Chamberlin:** Pick Up Poop — due today
 #   - **Rylee Chamberlin:** Pick Up Poop — due today
+#   - **Rylee Chamberlin:** Dishes — due today
 # card_mod:
 #   style: |
 #     ha-card {

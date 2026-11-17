@@ -86,4 +86,15 @@ class MemberChoreSensor(SensorEntity):
             "due_today": sum(o.due == today for o in occs),
             "next_due": nxt.due.isoformat() if nxt else None,
             "next_chore": self._engine.chores[nxt.chore_id].name if nxt else None,
+            # Every open occurrence (sorted by due) so dashboards can list each
+            # chore, not just the soonest. chore_id lets a card's tap action
+            # call chore_assistant.complete for that specific chore.
+            "items": [
+                {
+                    "chore_id": o.chore_id,
+                    "name": self._engine.chores[o.chore_id].name,
+                    "due": o.due.isoformat(),
+                }
+                for o in occs
+            ],
         }
