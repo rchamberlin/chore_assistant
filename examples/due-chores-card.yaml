@@ -1,0 +1,90 @@
+# Per-member due / overdue chores card — tap to complete (Lovelace)
+#
+# One card per member. It lists that member's open chores due tomorrow, today,
+# or overdue (sorted soonest-first) and lets you TAP a chore to mark it done.
+#
+#   green   due tomorrow
+#   yellow  due today
+#   red      overdue
+#
+# Tapping a chore calls `chore_assistant.complete` with that chore's id, which
+# credits the chore's assignee and generates the next occurrence (schedule-
+# anchored). A confirmation dialog guards against accidental taps.
+#
+# Data source: each `sensor.<member>_overdue_chores` entity exposes an `items`
+# attribute — a list of {chore_id, name, due} for that member's open chores.
+# (Requires an HA restart after upgrading the integration so `items` appears.)
+#
+# Requirements (HACS frontend plugins):
+#   - button-card          (custom:button-card)
+#   - mushroom             (custom:mushroom-template-card)
+#   - card-mod             (used for the border / left-aligned text)
+#
+# Install: point `entity:` at the member sensor you want and paste as a card.
+# Duplicate it per member (e.g. sensor.alex_chamberlin_overdue_chores).
+
+type: custom:button-card
+entity: sensor.rylee_chamberlin_overdue_chores
+show_icon: false
+show_name: false
+tap_action: none
+styles:
+  card:
+    - padding: 0px
+    - box-shadow: none
+    - background: none
+    - align-items: start
+    - justify-items: start
+    - text-align: left
+  grid:
+    - grid-template-areas: '"list"'
+    - grid-template-columns: 1fr
+custom_fields:
+  list:
+    card:
+      type: vertical-stack
+      tap_action: none
+      triggers_update: all
+      card_mod:
+        style: |
+          ha-card {
+            background-color: var(--card-background-color);
+            border: 1px solid #000;
+          }
+      cards: |
+        [[[
+          const items = entity.attributes.items || [];
+          const today = new Date().toLocaleDateString('en-CA');
+          const t = new Date();
+          t.setDate(t.getDate() + 1);
+          const tomorrow = t.toLocaleDateString('en-CA');
+
+          return items
+            .filter(item => item.due <= tomorrow)
+            .sort((a, b) => a.due.localeCompare(b.due))
+            .map(item => {
+              const isOverdue = item.due < today;
+              const isToday = item.due === today;
+
+              return {
+                type: 'custom:mushroom-template-card',
+                primary: item.name,
+                secondary: isOverdue ? 'Overdue' : isToday ? 'Today' : 'Tomorrow',
+                icon: 'mdi:broom',
+                icon_color: isOverdue ? 'var(--red)' : isToday ? 'var(--yellow)' : 'var(--green)',
+                tap_action: {
+                  action: 'perform-action',
+                  perform_action: 'chore_assistant.complete',
+                  data: { chore_id: item.chore_id },
+                  confirmation: { text: `Mark "${item.name}" as done?` },
+                },
+                card_mod: {
+                  style: `
+                    ha-card {
+                      text-align: left;
+                    }
+                  `,
+                },
+              };
+            });
+        ]]]
