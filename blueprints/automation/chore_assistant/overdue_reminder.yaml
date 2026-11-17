@@ -21,11 +21,10 @@ action:
   - service: !input notify_service
     data:
       title: "Chore overdue"
-      message: >
+      message: >-
         {{ trigger.event.data.chore_name }} is overdue
-        {% if trigger.event.data.member_name %}
-        (assigned to {{ trigger.event.data.member_name }})
-        {% endif %}.
+        {%- if trigger.event.data.member_name %} (assigned to
+        {{ trigger.event.data.member_name }}){% endif %}.
 
 mode: queued
 max: 25

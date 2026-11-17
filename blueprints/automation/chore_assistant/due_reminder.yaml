@@ -1,0 +1,31 @@
+blueprint:
+  name: Chore Assistant - Due-today reminder
+  description: >
+    Notify the assigned member on the morning a chore is due. Fires on the
+    `chore_assistant_due` event, which the integration emits from its daily
+    sweep for every occurrence due that day. The event carries the chore name
+    and the assignee's linked person. Point the notify action at your mobile
+    app or a notify group.
+  domain: automation
+  input:
+    notify_service:
+      name: Notify service
+      description: The notify service to call (e.g. notify.mobile_app_phone).
+      selector:
+        text:
+
+trigger:
+  - platform: event
+    event_type: chore_assistant_due
+
+action:
+  - service: !input notify_service
+    data:
+      title: "Chore due today"
+      message: >-
+        {{ trigger.event.data.chore_name }} is due today
+        {%- if trigger.event.data.member_name %} (assigned to
+        {{ trigger.event.data.member_name }}){% endif %}.
+
+mode: queued
+max: 25
