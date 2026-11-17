@@ -1,0 +1,94 @@
+# Due / overdue chores banner (Lovelace card)
+#
+# A dashboard banner that appears above your person cards whenever a chore is
+# due tomorrow, due today, or overdue — and hides itself otherwise.
+#
+#   yellow  (#fdd835)  a chore is due tomorrow
+#   orange  (#fb8c00)  a chore is due today
+#   red     (#e53935)  a chore is overdue        (highest severity wins)
+#
+# It scans every `sensor.*` whose unit_of_measurement is "chores" (the
+# per-member sensors this integration creates), so new members are picked up
+# automatically with no edits here.
+#
+# Requirements:
+#   - card_mod (HACS "lovelace-card-mod") for the templated background colour.
+#
+# Install:
+#   Paste the first card below as the FIRST card in your view, above the
+#   person cards. The second card (clearly marked) is a static preview that
+#   forces the banner visible so you can check the styling before anything is
+#   actually due.
+
+###############################################################################
+# LIVE CARD — use this one.
+###############################################################################
+type: markdown
+visibility:
+  - condition: template
+    value_template: >-
+      {%- set s = states.sensor | selectattr('attributes.unit_of_measurement','eq','chores') | list -%}
+      {%- set overdue = s | map(attribute='state') | map('int', 0) | sum -%}
+      {%- set today = s | map(attribute='attributes.due_today') | map('int', 0) | sum -%}
+      {%- set tmrw = (now() + timedelta(days=1)).date().isoformat() -%}
+      {%- set tomorrow = s | map(attribute='attributes.next_due') | select('eq', tmrw) | list | count -%}
+      {{ overdue > 0 or today > 0 or tomorrow > 0 }}
+content: >-
+  {%- set sensors = states.sensor | selectattr('attributes.unit_of_measurement','eq','chores') | list -%}
+  {%- set tdy = now().date().isoformat() -%}
+  {%- set tmrw = (now() + timedelta(days=1)).date().isoformat() -%}
+  {%- set overdue = sensors | map(attribute='state') | map('int', 0) | sum -%}
+  {%- set today = sensors | map(attribute='attributes.due_today') | map('int', 0) | sum -%}
+  {%- set tomorrow = sensors | map(attribute='attributes.next_due') | select('eq', tmrw) | list | count -%}
+  {%- set ns = namespace(lines=[]) -%}
+  {%- if overdue > 0 -%}
+    {%- set ns.lines = ['### 🔴 ' ~ overdue ~ ' chore' ~ ('s' if overdue > 1 else '') ~ ' overdue'] -%}
+  {%- elif today > 0 -%}
+    {%- set ns.lines = ['### 🟠 ' ~ today ~ ' chore' ~ ('s' if today > 1 else '') ~ ' due today'] -%}
+  {%- else -%}
+    {%- set ns.lines = ['### 🟡 ' ~ tomorrow ~ ' chore' ~ ('s' if tomorrow > 1 else '') ~ ' due tomorrow'] -%}
+  {%- endif -%}
+  {%- for s in sensors -%}
+    {%- set name = s.attributes.friendly_name | replace(' overdue chores', '') -%}
+    {%- set od = s.state | int(0) -%}
+    {%- set nd = s.attributes.next_due -%}
+    {%- set chore = s.attributes.next_chore -%}
+    {%- if od > 0 -%}
+      {%- set ns.lines = ns.lines + ['- **' ~ name ~ ':** ' ~ chore ~ ' — overdue'] -%}
+    {%- elif nd and nd[:10] == tdy -%}
+      {%- set ns.lines = ns.lines + ['- **' ~ name ~ ':** ' ~ chore ~ ' — due today'] -%}
+    {%- elif nd and nd[:10] == tmrw -%}
+      {%- set ns.lines = ns.lines + ['- **' ~ name ~ ':** ' ~ chore ~ ' — due tomorrow'] -%}
+    {%- endif -%}
+  {%- endfor -%}
+  {{ ns.lines | join('\n') }}
+card_mod:
+  style: |
+    ha-card {
+      {% set s = states.sensor | selectattr('attributes.unit_of_measurement','eq','chores') | list %}
+      {% set overdue = s | map(attribute='state') | map('int', 0) | sum %}
+      {% set today = s | map(attribute='attributes.due_today') | map('int', 0) | sum %}
+      background: {% if overdue > 0 %}#e53935{% elif today > 0 %}#fb8c00{% else %}#fdd835{% endif %} !important;
+    }
+    ha-card, ha-card ha-markdown, ha-card h3 {
+      color: #1b1b1b !important;
+    }
+
+###############################################################################
+# STATIC PREVIEW — paste this INSTEAD, temporarily, to check the look.
+# Change `bg` to #fdd835 (yellow), #fb8c00 (orange) or #e53935 (red).
+# Delete it once you have confirmed the styling.
+###############################################################################
+# type: markdown
+# content: |
+#   ### 🟠 2 chores due today
+#   - **Alex Chamberlin:** Pick Up Poop — due today
+#   - **Rylee Chamberlin:** Pick Up Poop — due today
+# card_mod:
+#   style: |
+#     ha-card {
+#       background: #fb8c00 !important;
+#     }
+#     ha-card, ha-card ha-markdown, ha-card h3 {
+#       color: #1b1b1b !important;
+#     }
