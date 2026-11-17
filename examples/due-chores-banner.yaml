@@ -7,9 +7,10 @@
 #   orange  (#fb8c00)  a chore is due today
 #   red     (#e53935)  a chore is overdue        (highest severity wins)
 #
-# It scans every `sensor.*` whose unit_of_measurement is "chores" (the
-# per-member sensors this integration creates), so new members are picked up
-# automatically with no edits here.
+# It scans every `sensor.*_overdue_chores` entity (the per-member sensors this
+# integration creates), so new members are picked up automatically with no
+# edits here. (We match on entity_id rather than filtering the attributes dict,
+# because selectattr through `.attributes` fails in HA's template sandbox.)
 #
 # Requirements:
 #   - card_mod (HACS "lovelace-card-mod") for the templated background colour.
@@ -27,32 +28,39 @@ type: markdown
 visibility:
   - condition: template
     value_template: >-
-      {%- set s = states.sensor | selectattr('attributes.unit_of_measurement','eq','chores') | list -%}
-      {%- set overdue = s | map(attribute='state') | map('int', 0) | sum -%}
-      {%- set today = s | map(attribute='attributes.due_today') | map('int', 0) | sum -%}
+      {%- set ids = states.sensor | map(attribute='entity_id') | select('match', '.*_overdue_chores$') | list -%}
       {%- set tmrw = (now() + timedelta(days=1)).date().isoformat() -%}
-      {%- set tomorrow = s | map(attribute='attributes.next_due') | select('eq', tmrw) | list | count -%}
-      {{ overdue > 0 or today > 0 or tomorrow > 0 }}
+      {%- set ns = namespace(overdue=0, today=0, tomorrow=0) -%}
+      {%- for id in ids -%}
+        {%- set ns.overdue = ns.overdue + (states(id) | int(0)) -%}
+        {%- set ns.today = ns.today + (state_attr(id, 'due_today') | int(0)) -%}
+        {%- set nd = state_attr(id, 'next_due') -%}
+        {%- if nd and nd[:10] == tmrw %}{% set ns.tomorrow = ns.tomorrow + 1 %}{% endif -%}
+      {%- endfor -%}
+      {{ ns.overdue > 0 or ns.today > 0 or ns.tomorrow > 0 }}
 content: >-
-  {%- set sensors = states.sensor | selectattr('attributes.unit_of_measurement','eq','chores') | list -%}
+  {%- set ids = states.sensor | map(attribute='entity_id') | select('match', '.*_overdue_chores$') | list -%}
   {%- set tdy = now().date().isoformat() -%}
   {%- set tmrw = (now() + timedelta(days=1)).date().isoformat() -%}
-  {%- set overdue = sensors | map(attribute='state') | map('int', 0) | sum -%}
-  {%- set today = sensors | map(attribute='attributes.due_today') | map('int', 0) | sum -%}
-  {%- set tomorrow = sensors | map(attribute='attributes.next_due') | select('eq', tmrw) | list | count -%}
-  {%- set ns = namespace(lines=[]) -%}
-  {%- if overdue > 0 -%}
-    {%- set ns.lines = ['### 🔴 ' ~ overdue ~ ' chore' ~ ('s' if overdue > 1 else '') ~ ' overdue'] -%}
-  {%- elif today > 0 -%}
-    {%- set ns.lines = ['### 🟠 ' ~ today ~ ' chore' ~ ('s' if today > 1 else '') ~ ' due today'] -%}
+  {%- set ns = namespace(overdue=0, today=0, tomorrow=0, lines=[]) -%}
+  {%- for id in ids -%}
+    {%- set ns.overdue = ns.overdue + (states(id) | int(0)) -%}
+    {%- set ns.today = ns.today + (state_attr(id, 'due_today') | int(0)) -%}
+    {%- set nd = state_attr(id, 'next_due') -%}
+    {%- if nd and nd[:10] == tmrw %}{% set ns.tomorrow = ns.tomorrow + 1 %}{% endif -%}
+  {%- endfor -%}
+  {%- if ns.overdue > 0 -%}
+    {%- set ns.lines = ['### 🔴 ' ~ ns.overdue ~ ' chore' ~ ('s' if ns.overdue > 1 else '') ~ ' overdue'] -%}
+  {%- elif ns.today > 0 -%}
+    {%- set ns.lines = ['### 🟠 ' ~ ns.today ~ ' chore' ~ ('s' if ns.today > 1 else '') ~ ' due today'] -%}
   {%- else -%}
-    {%- set ns.lines = ['### 🟡 ' ~ tomorrow ~ ' chore' ~ ('s' if tomorrow > 1 else '') ~ ' due tomorrow'] -%}
+    {%- set ns.lines = ['### 🟡 ' ~ ns.tomorrow ~ ' chore' ~ ('s' if ns.tomorrow > 1 else '') ~ ' due tomorrow'] -%}
   {%- endif -%}
-  {%- for s in sensors -%}
-    {%- set name = s.attributes.friendly_name | replace(' overdue chores', '') -%}
-    {%- set od = s.state | int(0) -%}
-    {%- set nd = s.attributes.next_due -%}
-    {%- set chore = s.attributes.next_chore -%}
+  {%- for id in ids -%}
+    {%- set name = state_attr(id, 'friendly_name') | replace(' overdue chores', '') -%}
+    {%- set od = states(id) | int(0) -%}
+    {%- set nd = state_attr(id, 'next_due') -%}
+    {%- set chore = state_attr(id, 'next_chore') -%}
     {%- if od > 0 -%}
       {%- set ns.lines = ns.lines + ['- **' ~ name ~ ':** ' ~ chore ~ ' — overdue'] -%}
     {%- elif nd and nd[:10] == tdy -%}
@@ -65,10 +73,13 @@ content: >-
 card_mod:
   style: |
     ha-card {
-      {% set s = states.sensor | selectattr('attributes.unit_of_measurement','eq','chores') | list %}
-      {% set overdue = s | map(attribute='state') | map('int', 0) | sum %}
-      {% set today = s | map(attribute='attributes.due_today') | map('int', 0) | sum %}
-      background: {% if overdue > 0 %}#e53935{% elif today > 0 %}#fb8c00{% else %}#fdd835{% endif %} !important;
+      {% set ids = states.sensor | map(attribute='entity_id') | select('match', '.*_overdue_chores$') | list %}
+      {% set ns = namespace(overdue=0, today=0) %}
+      {% for id in ids %}
+        {% set ns.overdue = ns.overdue + (states(id) | int(0)) %}
+        {% set ns.today = ns.today + (state_attr(id, 'due_today') | int(0)) %}
+      {% endfor %}
+      background: {% if ns.overdue > 0 %}#e53935{% elif ns.today > 0 %}#fb8c00{% else %}#fdd835{% endif %} !important;
     }
     ha-card, ha-card ha-markdown, ha-card h3 {
       color: #1b1b1b !important;
@@ -76,7 +87,7 @@ card_mod:
 
 ###############################################################################
 # STATIC PREVIEW — paste this INSTEAD, temporarily, to check the look.
-# Change `bg` to #fdd835 (yellow), #fb8c00 (orange) or #e53935 (red).
+# Change `background` to #fdd835 (yellow), #fb8c00 (orange) or #e53935 (red).
 # Delete it once you have confirmed the styling.
 ###############################################################################
 # type: markdown
