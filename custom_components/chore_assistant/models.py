@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import calendar as _calendar
 from dataclasses import dataclass, field
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, timedelta
 from uuid import uuid4
 
 from homeassistant.util import dt as dt_util
@@ -33,18 +33,13 @@ def new_id() -> str:
     return uuid4().hex[:8]
 
 
-def _combine(d: date, t: time) -> datetime:
-    """Combine a date and local time into a timezone-aware local datetime."""
-    return datetime.combine(d, t, tzinfo=dt_util.DEFAULT_TIME_ZONE)
-
-
 @dataclass
 class Recurrence:
-    """When a Chore is due. Next due is always schedule-anchored, never
-    computed from completion time."""
+    """When a Chore is due. A Chore is due on a *date* (there is no time of
+    day — it just needs doing sometime that day). Next due is always
+    schedule-anchored, never computed from completion time."""
 
     frequency: str = FREQ_DAILY
-    due_time: time = time(9, 0)
     anchor_date: date = field(default_factory=lambda: dt_util.now().date())
     # weekly
     weekdays: list[int] = field(default_factory=list)  # 0 = Monday .. 6 = Sunday
@@ -91,25 +86,21 @@ class Recurrence:
         last = _calendar.monthrange(year, month)[1]
         return date(year, month, min(self.day_of_month, last))
 
-    def first_due(self, now: datetime | None = None) -> datetime:
-        """First occurrence due datetime, on or after max(anchor, today)."""
-        today = (now or dt_util.now()).date()
-        return _combine(self._matches_or_after(today), self.due_time)
+    def first_due(self, today: date | None = None) -> date:
+        """First occurrence due date, on or after max(anchor, today)."""
+        return self._matches_or_after(today or dt_util.now().date())
 
-    def next_due_after(self, due: datetime) -> datetime:
+    def next_due_after(self, due: date) -> date:
         """Next occurrence strictly after the given occurrence's due date."""
-        nxt = self._matches_or_after(due.date() + timedelta(days=1))
-        return _combine(nxt, self.due_time)
+        return self._matches_or_after(due + timedelta(days=1))
 
-    def iter_due(self, start: datetime, end: datetime):
-        """Yield due datetimes in [start, end] (used by the calendar view)."""
-        cur = self._matches_or_after(start.date())
-        due = _combine(cur, self.due_time)
+    def iter_due(self, start: date, end: date):
+        """Yield due dates in [start, end] (used by the calendar view)."""
+        cur = self._matches_or_after(start)
         guard = 0
-        while due <= end and guard < _MAX_LOOKAHEAD_DAYS:
-            if due >= start:
-                yield due
-            due = self.next_due_after(due)
+        while cur <= end and guard < _MAX_LOOKAHEAD_DAYS:
+            yield cur
+            cur = self.next_due_after(cur)
             guard += 1
 
     # -- serialization -----------------------------------------------------
@@ -117,7 +108,6 @@ class Recurrence:
     def to_dict(self) -> dict:
         return {
             "frequency": self.frequency,
-            "due_time": self.due_time.isoformat(timespec="minutes"),
             "anchor_date": self.anchor_date.isoformat(),
             "weekdays": list(self.weekdays),
             "day_of_month": self.day_of_month,
@@ -127,9 +117,9 @@ class Recurrence:
 
     @classmethod
     def from_dict(cls, data: dict) -> Recurrence:
+        # ``due_time`` from older stores is intentionally ignored.
         return cls(
             frequency=data.get("frequency", FREQ_DAILY),
-            due_time=time.fromisoformat(data.get("due_time", "09:00")),
             anchor_date=date.fromisoformat(
                 data.get("anchor_date", dt_util.now().date().isoformat())
             ),
@@ -207,22 +197,23 @@ class Chore:
 @dataclass
 class Occurrence:
     """One concrete, due-able instance of a Chore. Exactly one is open per
-    Chore at a time."""
+    Chore at a time. Due on a date — overdue only once that date has passed."""
 
     chore_id: str
-    due: datetime
+    due: date
 
     @property
     def uid(self) -> str:
         # One open occurrence per chore, so the chore id is a stable uid.
         return self.chore_id
 
-    def is_overdue(self, now: datetime | None = None) -> bool:
-        return (now or dt_util.now()) > self.due
+    def is_overdue(self, today: date | None = None) -> bool:
+        return (today or dt_util.now().date()) > self.due
 
     def to_dict(self) -> dict:
         return {"chore_id": self.chore_id, "due": self.due.isoformat()}
 
     @classmethod
     def from_dict(cls, data: dict) -> Occurrence:
-        return cls(chore_id=data["chore_id"], due=dt_util.parse_datetime(data["due"]))
+        # Tolerate older stores that persisted a full datetime for ``due``.
+        return cls(chore_id=data["chore_id"], due=date.fromisoformat(data["due"][:10]))

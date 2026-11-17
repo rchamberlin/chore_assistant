@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, time
+from datetime import date
 
 import voluptuous as vol
 
@@ -116,7 +116,6 @@ def _async_register_services(hass: HomeAssistant, engine: ChoreEngine) -> None:
                 vol.Optional(ATTR_ASSIGNEE): cv.string,
                 vol.Optional(ATTR_DESCRIPTION): cv.string,
                 vol.Optional("frequency"): cv.string,
-                vol.Optional("due_time"): cv.time,
                 vol.Optional("anchor_date"): cv.date,
                 vol.Optional("weekdays"): [vol.Coerce(int)],
                 vol.Optional("day_of_month"): vol.All(int, vol.Range(1, 31)),
@@ -146,8 +145,6 @@ def _recurrence_from_service(data: dict) -> Recurrence:
     kwargs: dict = {}
     if (freq := data.get("frequency")) is not None:
         kwargs["frequency"] = freq
-    if isinstance(data.get("due_time"), time):
-        kwargs["due_time"] = data["due_time"]
     if isinstance(data.get("anchor_date"), date):
         kwargs["anchor_date"] = data["anchor_date"]
     for key in ("weekdays", "day_of_month", "interval", "interval_unit"):

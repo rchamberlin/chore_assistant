@@ -60,10 +60,6 @@ create_chore:
       selector:
         select:
           options: [daily, weekly, monthly, interval]
-    due_time:
-      name: Due time
-      selector:
-        time:
     anchor_date:
       name: Start / anchor date
       selector:

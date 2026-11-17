@@ -8,8 +8,10 @@ A Home Assistant custom integration for managing household chores natively, targ
 - **Occurrences** are the due-able instances you actually complete. Exactly one
   is open per chore at a time; an overdue one stays visible rather than piling up.
 - **Recurrence**: daily, weekly (chosen weekdays), monthly (chosen day), or every
-  N days/weeks, each with a due time and an explicit start/anchor date. Next due
-  is always schedule-anchored, never based on when you completed it.
+  N days/weeks, each with an explicit start/anchor date. A chore is due on a
+  *date* — there is no time of day, it just needs doing sometime that day, and
+  it only counts as overdue once the date has passed. Next due is always
+  schedule-anchored, never based on when you completed it.
 - **Members** are the people who do chores; each links to a Home Assistant
   `person` for presence and notifications.
 - **Entities**: a unified **Chores** todo list and one per member, a dedicated

@@ -70,21 +70,20 @@ class MemberChoreSensor(SensorEntity):
 
     @property
     def native_value(self) -> int:
-        now = dt_util.now()
+        today = dt_util.now().date()
         return sum(
-            occ.is_overdue(now)
+            occ.is_overdue(today)
             for occ in self._engine.open_occurrences(self._member_id)
         )
 
     @property
     def extra_state_attributes(self) -> dict:
-        now = dt_util.now()
-        today = now.date()
+        today = dt_util.now().date()
         occs = self._engine.open_occurrences(self._member_id)
         nxt = occs[0] if occs else None
         return {
             "open_total": len(occs),
-            "due_today": sum(o.due.date() == today for o in occs),
+            "due_today": sum(o.due == today for o in occs),
             "next_due": nxt.due.isoformat() if nxt else None,
             "next_chore": self._engine.chores[nxt.chore_id].name if nxt else None,
         }

@@ -8,15 +8,11 @@ in-process backend that replaces an external server (see ADR 0001).
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
 from datetime import datetime
 
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_send
-from homeassistant.helpers.event import (
-    async_track_point_in_time,
-    async_track_time_change,
-)
+from homeassistant.helpers.event import async_track_time_change
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
@@ -45,7 +41,6 @@ class ChoreEngine:
         self.members: dict[str, Member] = {}
         self.chores: dict[str, Chore] = {}
         self.occurrences: dict[str, Occurrence] = {}  # keyed by chore_id
-        self._timers: dict[str, CALLBACK_TYPE] = {}
         self._unsub_daily: CALLBACK_TYPE | None = None
 
     # -- lifecycle ---------------------------------------------------------
@@ -62,22 +57,20 @@ class ChoreEngine:
                 for o in data.get("occurrences", [])
             }
 
-        # Make sure every enabled chore has an open occurrence, then schedule.
+        # Make sure every enabled chore has an open occurrence.
         for chore in self.chores.values():
             if chore.enabled and chore.id not in self.occurrences:
                 self._generate_first(chore)
-        self._reschedule_all()
 
+        # A single daily sweep announces what is due today and what is overdue;
+        # with date-based due there is no precise due time to wake up on.
         self._unsub_daily = async_track_time_change(
-            self.hass, self._async_daily_overdue_check, hour=OVERDUE_CHECK_HOUR,
+            self.hass, self._async_daily_check, hour=OVERDUE_CHECK_HOUR,
             minute=0, second=0,
         )
 
     @callback
     def async_shutdown(self) -> None:
-        for unsub in self._timers.values():
-            unsub()
-        self._timers.clear()
         if self._unsub_daily:
             self._unsub_daily()
             self._unsub_daily = None
@@ -96,37 +89,16 @@ class ChoreEngine:
         self._store.async_delay_save(self._data, 2)
         async_dispatcher_send(self.hass, SIGNAL_UPDATE)
 
-    # -- scheduling --------------------------------------------------------
+    # -- daily sweep -------------------------------------------------------
 
     @callback
-    def _reschedule_all(self) -> None:
-        for chore_id in list(self._timers):
-            self._timers.pop(chore_id)()
+    def _async_daily_check(self, now: datetime) -> None:
+        today = now.date()
         for occ in self.occurrences.values():
-            self._schedule(occ)
-
-    @callback
-    def _schedule(self, occ: Occurrence) -> None:
-        if (existing := self._timers.pop(occ.chore_id, None)) is not None:
-            existing()
-        if occ.due <= dt_util.now():
-            return  # already due/overdue; nothing to wait for
-
-        @callback
-        def _fire(_now: datetime) -> None:
-            self._timers.pop(occ.chore_id, None)
-            self._emit(EVENT_DUE, occ)
-            async_dispatcher_send(self.hass, SIGNAL_UPDATE)
-
-        self._timers[occ.chore_id] = async_track_point_in_time(
-            self.hass, _fire, occ.due
-        )
-
-    @callback
-    def _async_daily_overdue_check(self, now: datetime) -> None:
-        for occ in self.occurrences.values():
-            if occ.is_overdue(now):
+            if occ.due < today:
                 self._emit(EVENT_OVERDUE, occ)
+            elif occ.due == today:
+                self._emit(EVENT_DUE, occ)
         async_dispatcher_send(self.hass, SIGNAL_UPDATE)
 
     # -- occurrence generation --------------------------------------------
@@ -138,11 +110,10 @@ class ChoreEngine:
         )
 
     @callback
-    def _generate_next(self, chore: Chore, after_due: datetime) -> None:
+    def _generate_next(self, chore: Chore, after_due) -> None:
         self.occurrences[chore.id] = Occurrence(
             chore_id=chore.id, due=chore.recurrence.next_due_after(after_due)
         )
-        self._schedule(self.occurrences[chore.id])
 
     # -- events ------------------------------------------------------------
 
@@ -189,7 +160,6 @@ class ChoreEngine:
         self.chores[chore.id] = chore
         if chore.enabled:
             self._generate_first(chore)
-            self._schedule(self.occurrences[chore.id])
         self._save_and_notify()
         return chore
 
@@ -210,15 +180,12 @@ class ChoreEngine:
             setattr(chore, key, value)
         if reschedule and chore.enabled:
             self._generate_first(chore)
-            self._schedule(self.occurrences[chore.id])
         self._save_and_notify()
 
     @callback
     def delete_chore(self, chore_id: str) -> None:
         self.chores.pop(chore_id, None)
         self.occurrences.pop(chore_id, None)
-        if (unsub := self._timers.pop(chore_id, None)) is not None:
-            unsub()
         self._save_and_notify()
 
     @callback

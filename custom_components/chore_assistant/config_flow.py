@@ -7,7 +7,7 @@ happens in the options flow, which drives the engine directly.
 
 from __future__ import annotations
 
-from datetime import date, time
+from datetime import date
 from typing import Any
 
 import voluptuous as vol
@@ -279,10 +279,6 @@ class ChoreAssistantOptionsFlow(OptionsFlow):
                 required(
                     "anchor_date", rec.anchor_date.isoformat() if rec else None
                 ): selector.DateSelector(),
-                vol.Required(
-                    "due_time",
-                    default=rec.due_time.isoformat() if rec else "09:00:00",
-                ): selector.TimeSelector(),
                 optional(
                     "description", chore.description if chore and chore.description else None
                 ): selector.TextSelector(
@@ -290,12 +286,6 @@ class ChoreAssistantOptionsFlow(OptionsFlow):
                 ),
             }
         )
-
-
-def _coerce_time(value: Any) -> time:
-    if isinstance(value, time):
-        return value
-    return time.fromisoformat(value)
 
 
 def _coerce_date(value: Any) -> date:
@@ -308,7 +298,6 @@ def _recurrence_from_form(data: dict[str, Any]) -> Recurrence:
     frequency = data["frequency"]
     kwargs: dict[str, Any] = {
         "frequency": frequency,
-        "due_time": _coerce_time(data["due_time"]),
         "anchor_date": _coerce_date(data["anchor_date"]),
     }
     if frequency == FREQ_WEEKLY:

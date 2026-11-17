@@ -6,19 +6,15 @@ calendar (see DESIGN.md Q13).
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from homeassistant.components.calendar import CalendarEntity, CalendarEvent
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.util import dt as dt_util
 
 from . import ChoreConfigEntry
 from .const import SIGNAL_UPDATE
-
-# How long a chore "event" visually occupies on the calendar.
-_EVENT_DURATION = timedelta(minutes=30)
 
 
 async def async_setup_entry(
@@ -47,13 +43,14 @@ class ChoreCalendar(CalendarEntity):
             )
         )
 
-    def _event_for(self, chore_id: str, due: datetime) -> CalendarEvent:
+    def _event_for(self, chore_id: str, due: date) -> CalendarEvent:
         chore = self._engine.chores[chore_id]
         member = self._engine.members.get(chore.assignee_id or "")
         suffix = f" ({member.name})" if member else ""
+        # All-day event: date-only start/end, end exclusive (iCal convention).
         return CalendarEvent(
             start=due,
-            end=due + _EVENT_DURATION,
+            end=due + timedelta(days=1),
             summary=f"{chore.name}{suffix}",
             description=chore.description or None,
             uid=f"{chore_id}:{due.isoformat()}",
@@ -72,6 +69,6 @@ class ChoreCalendar(CalendarEntity):
         for chore in self._engine.chores.values():
             if not chore.enabled:
                 continue
-            for due in chore.recurrence.iter_due(start_date, end_date):
+            for due in chore.recurrence.iter_due(start_date.date(), end_date.date()):
                 events.append(self._event_for(chore.id, due))
         return sorted(events, key=lambda e: e.start)
