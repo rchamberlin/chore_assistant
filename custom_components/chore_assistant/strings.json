@@ -18,6 +18,7 @@
           "add_member": "Add member",
           "remove_member": "Remove member",
           "add_chore": "Add chore",
+          "edit_chore": "Edit chore",
           "remove_chore": "Remove chore"
         }
       },
@@ -34,6 +35,26 @@
       },
       "add_chore": {
         "title": "Add chore",
+        "data": {
+          "name": "Name",
+          "assignee": "Assignee",
+          "frequency": "Frequency",
+          "weekdays": "Weekdays (weekly)",
+          "day_of_month": "Day of month (monthly)",
+          "interval": "Interval (interval)",
+          "interval_unit": "Interval unit (interval)",
+          "anchor_date": "Start / anchor date",
+          "due_time": "Due time",
+          "description": "Description / steps"
+        }
+      },
+      "edit_chore": {
+        "title": "Edit chore",
+        "data": { "chore_id": "Chore" }
+      },
+      "edit_chore_form": {
+        "title": "Edit chore",
+        "description": "Editing \"{name}\". Changing the schedule regenerates the next due occurrence; editing name, assignee, or description leaves it in place.",
         "data": {
           "name": "Name",
           "assignee": "Assignee",

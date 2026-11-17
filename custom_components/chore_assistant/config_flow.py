@@ -59,7 +59,9 @@ class ChoreAssistantConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class ChoreAssistantOptionsFlow(OptionsFlow):
-    """Add/remove members and chores."""
+    """Add/edit/remove members and chores."""
+
+    _edit_chore_id: str | None = None
 
     @property
     def _engine(self):
@@ -74,6 +76,7 @@ class ChoreAssistantOptionsFlow(OptionsFlow):
                 "add_member",
                 "remove_member",
                 "add_chore",
+                "edit_chore",
                 "remove_chore",
             ],
         )
@@ -128,40 +131,56 @@ class ChoreAssistantOptionsFlow(OptionsFlow):
                 )
             )
             return await self.async_step_init()
-
-        schema = vol.Schema(
-            {
-                vol.Required("name"): selector.TextSelector(),
-                vol.Optional("assignee"): self._member_selector(),
-                vol.Required("frequency", default="daily"): selector.SelectSelector(
-                    selector.SelectSelectorConfig(options=FREQUENCIES)
-                ),
-                vol.Optional("weekdays"): selector.SelectSelector(
-                    selector.SelectSelectorConfig(
-                        options=[
-                            selector.SelectOptionDict(value=v, label=l)
-                            for v, l in _WEEKDAYS
-                        ],
-                        multiple=True,
-                    )
-                ),
-                vol.Optional("day_of_month", default=1): selector.NumberSelector(
-                    selector.NumberSelectorConfig(min=1, max=31, mode="box")
-                ),
-                vol.Optional("interval", default=1): selector.NumberSelector(
-                    selector.NumberSelectorConfig(min=1, max=52, mode="box")
-                ),
-                vol.Optional("interval_unit", default="weeks"): selector.SelectSelector(
-                    selector.SelectSelectorConfig(options=INTERVAL_UNITS)
-                ),
-                vol.Required("anchor_date"): selector.DateSelector(),
-                vol.Required("due_time", default="09:00:00"): selector.TimeSelector(),
-                vol.Optional("description"): selector.TextSelector(
-                    selector.TextSelectorConfig(multiline=True)
-                ),
-            }
+        return self.async_show_form(
+            step_id="add_chore", data_schema=self._chore_schema()
         )
-        return self.async_show_form(step_id="add_chore", data_schema=schema)
+
+    async def async_step_edit_chore(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Pick a chore to edit, then show its pre-filled form."""
+        if not self._engine.chores:
+            return await self.async_step_init()
+        if user_input is not None:
+            self._edit_chore_id = user_input["chore_id"]
+            return await self.async_step_edit_chore_form()
+        options = [
+            selector.SelectOptionDict(value=c.id, label=c.name)
+            for c in self._engine.chores.values()
+        ]
+        return self.async_show_form(
+            step_id="edit_chore",
+            data_schema=vol.Schema(
+                {
+                    vol.Required("chore_id"): selector.SelectSelector(
+                        selector.SelectSelectorConfig(options=options)
+                    )
+                }
+            ),
+        )
+
+    async def async_step_edit_chore_form(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        chore = self._engine.chores.get(self._edit_chore_id)
+        if chore is None:  # removed out from under us
+            return await self.async_step_init()
+        if user_input is not None:
+            self._engine.update_chore(
+                self._edit_chore_id,
+                {
+                    "name": user_input["name"],
+                    "assignee_id": user_input.get("assignee"),
+                    "description": user_input.get("description", ""),
+                    "recurrence": _recurrence_from_form(user_input),
+                },
+            )
+            return await self.async_step_init()
+        return self.async_show_form(
+            step_id="edit_chore_form",
+            data_schema=self._chore_schema(chore),
+            description_placeholders={"name": chore.name},
+        )
 
     async def async_step_remove_chore(
         self, user_input: dict[str, Any] | None = None
@@ -195,6 +214,81 @@ class ChoreAssistantOptionsFlow(OptionsFlow):
         ]
         return selector.SelectSelector(
             selector.SelectSelectorConfig(options=options)
+        )
+
+    def _chore_schema(self, chore: Chore | None = None) -> vol.Schema:
+        """Build the add/edit chore form.
+
+        With ``chore`` the fields are pre-filled from it (edit); without, the
+        add-chore defaults apply.
+        """
+        rec = chore.recurrence if chore else None
+
+        def required(key: str, default: Any) -> vol.Marker:
+            return (
+                vol.Required(key, default=default)
+                if default is not None
+                else vol.Required(key)
+            )
+
+        def optional(key: str, default: Any) -> vol.Marker:
+            return (
+                vol.Optional(key, default=default)
+                if default is not None
+                else vol.Optional(key)
+            )
+
+        return vol.Schema(
+            {
+                required("name", chore.name if chore else None): selector.TextSelector(),
+                optional(
+                    "assignee", chore.assignee_id if chore else None
+                ): self._member_selector(),
+                vol.Required(
+                    "frequency", default=rec.frequency if rec else "daily"
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(options=FREQUENCIES)
+                ),
+                optional(
+                    "weekdays",
+                    [str(d) for d in rec.weekdays] if rec and rec.weekdays else None,
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            selector.SelectOptionDict(value=v, label=l)
+                            for v, l in _WEEKDAYS
+                        ],
+                        multiple=True,
+                    )
+                ),
+                vol.Optional(
+                    "day_of_month", default=rec.day_of_month if rec else 1
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(min=1, max=31, mode="box")
+                ),
+                vol.Optional(
+                    "interval", default=rec.interval if rec else 1
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(min=1, max=52, mode="box")
+                ),
+                vol.Optional(
+                    "interval_unit", default=rec.interval_unit if rec else "weeks"
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(options=INTERVAL_UNITS)
+                ),
+                required(
+                    "anchor_date", rec.anchor_date.isoformat() if rec else None
+                ): selector.DateSelector(),
+                vol.Required(
+                    "due_time",
+                    default=rec.due_time.isoformat() if rec else "09:00:00",
+                ): selector.TimeSelector(),
+                optional(
+                    "description", chore.description if chore and chore.description else None
+                ): selector.TextSelector(
+                    selector.TextSelectorConfig(multiline=True)
+                ),
+            }
         )
 
 

@@ -9,6 +9,7 @@ from homeassistant.components.todo import (
     TodoListEntityFeature,
 )
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -23,17 +24,26 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     engine = entry.runtime_data
-    known_members: set[str] = set()
+    member_entities: dict[str, MemberChoreList] = {}
 
     @callback
     def _sync_entities() -> None:
         new: list[TodoListEntity] = []
         for member_id in engine.members:
-            if member_id not in known_members:
-                known_members.add(member_id)
-                new.append(MemberChoreList(entry, engine, member_id))
+            if member_id not in member_entities:
+                ent = MemberChoreList(entry, engine, member_id)
+                member_entities[member_id] = ent
+                new.append(ent)
         if new:
             async_add_entities(new)
+        # Drop lists for members that have been removed.
+        registry = er.async_get(hass)
+        for member_id in list(member_entities):
+            if member_id in engine.members:
+                continue
+            ent = member_entities.pop(member_id)
+            if ent.entity_id and registry.async_get(ent.entity_id):
+                registry.async_remove(ent.entity_id)
 
     async_add_entities([UnifiedChoreList(entry, engine)])
     _sync_entities()

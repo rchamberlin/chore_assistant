@@ -198,12 +198,19 @@ class ChoreEngine:
         chore = self.chores.get(chore_id)
         if chore is None:
             return
+        # Only reschedule when the schedule itself changes (or there is no open
+        # occurrence yet). A pure metadata edit (name/assignee/description) must
+        # not move when the chore is next due.
+        reschedule = chore.id not in self.occurrences
         for key, value in changes.items():
-            if value is not None and hasattr(chore, key):
-                setattr(chore, key, value)
-        # Recompute the open occurrence against the (possibly new) schedule.
-        self._generate_first(chore)
-        self._schedule(self.occurrences[chore.id])
+            if value is None or not hasattr(chore, key):
+                continue
+            if key == "recurrence" and value != chore.recurrence:
+                reschedule = True
+            setattr(chore, key, value)
+        if reschedule and chore.enabled:
+            self._generate_first(chore)
+            self._schedule(self.occurrences[chore.id])
         self._save_and_notify()
 
     @callback

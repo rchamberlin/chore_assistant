@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
@@ -19,17 +20,26 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     engine = entry.runtime_data
-    known: set[str] = set()
+    member_entities: dict[str, MemberChoreSensor] = {}
 
     @callback
     def _sync() -> None:
         new: list[MemberChoreSensor] = []
         for member_id in engine.members:
-            if member_id not in known:
-                known.add(member_id)
-                new.append(MemberChoreSensor(entry, engine, member_id))
+            if member_id not in member_entities:
+                ent = MemberChoreSensor(entry, engine, member_id)
+                member_entities[member_id] = ent
+                new.append(ent)
         if new:
             async_add_entities(new)
+        # Drop sensors for members that have been removed.
+        registry = er.async_get(hass)
+        for member_id in list(member_entities):
+            if member_id in engine.members:
+                continue
+            ent = member_entities.pop(member_id)
+            if ent.entity_id and registry.async_get(ent.entity_id):
+                registry.async_remove(ent.entity_id)
 
     _sync()
     entry.async_on_unload(async_dispatcher_connect(hass, SIGNAL_UPDATE, _sync))
