@@ -1,0 +1,41 @@
+blueprint:
+  name: Chore Assistant - Completed notification
+  description: >
+    Notify someone (e.g. a parent) whenever any chore is marked complete.
+    Fires on the `chore_assistant_completed` event and reports who completed
+    which chore. Tapping the notification opens a dashboard.
+
+    One instance covers all members and all chores.
+  domain: automation
+  input:
+    notify_service:
+      name: Notify service
+      description: Who to notify (e.g. notify.mobile_app_ryan_phone).
+      selector:
+        text:
+    dashboard_path:
+      name: Dashboard path
+      description: >
+        Where tapping the notification goes (e.g. /lovelace/0 or
+        /chamberlin/home).
+      default: "/lovelace/0"
+      selector:
+        text:
+
+trigger:
+  - platform: event
+    event_type: chore_assistant_completed
+
+action:
+  - service: !input notify_service
+    data:
+      title: "Chore completed"
+      message: >-
+        {{ trigger.event.data.completed_by_name or trigger.event.data.member_name or 'Someone' }}
+        completed {{ trigger.event.data.chore_name }}.
+      data:
+        clickAction: !input dashboard_path
+        url: !input dashboard_path
+
+mode: queued
+max: 25

@@ -1,31 +1,72 @@
 blueprint:
   name: Chore Assistant - Due-today reminder
   description: >
-    Notify the assigned member on the morning a chore is due. Fires on the
-    `chore_assistant_due` event, which the integration emits from its daily
-    sweep for every occurrence due that day. The event carries the chore name
-    and the assignee's linked person. Point the notify action at your mobile
-    app or a notify group.
+    At a time you choose, notify a member if one or more of their chores are
+    due that day. Sends a single notification listing every chore due today;
+    stays silent if nothing is due. Tapping the notification opens a dashboard.
+
+    Create one instance per member, pointing `Member sensor` at that member's
+    `sensor.<name>_overdue_chores` and `Notify service` at their device.
   domain: automation
   input:
+    member_sensor:
+      name: Member sensor
+      description: The chore_assistant sensor for this member (sensor.<name>_overdue_chores).
+      selector:
+        entity:
+          integration: chore_assistant
+          domain: sensor
     notify_service:
       name: Notify service
-      description: The notify service to call (e.g. notify.mobile_app_phone).
+      description: The member's notify service (e.g. notify.mobile_app_rylee_phone).
+      selector:
+        text:
+    reminder_time:
+      name: Reminder time
+      description: Time of day to send the due-today reminder.
+      default: "08:00:00"
+      selector:
+        time:
+    dashboard_path:
+      name: Dashboard path
+      description: >
+        Where tapping the notification goes (e.g. /lovelace/0 or
+        /chamberlin/home).
+      default: "/lovelace/0"
       selector:
         text:
 
+variables:
+  sensor_entity: !input member_sensor
+
 trigger:
-  - platform: event
-    event_type: chore_assistant_due
+  - platform: time
+    at: !input reminder_time
+
+condition:
+  - condition: template
+    value_template: >-
+      {%- set today = now().date().isoformat() -%}
+      {%- set ns = namespace(c=0) -%}
+      {%- for item in state_attr(sensor_entity, 'items') or [] -%}
+        {%- if item.due == today %}{% set ns.c = ns.c + 1 %}{% endif -%}
+      {%- endfor -%}
+      {{ ns.c > 0 }}
 
 action:
   - service: !input notify_service
     data:
-      title: "Chore due today"
+      title: "Chores due today"
       message: >-
-        {{ trigger.event.data.chore_name }} is due today
-        {%- if trigger.event.data.member_name %} (assigned to
-        {{ trigger.event.data.member_name }}){% endif %}.
+        {%- set today = now().date().isoformat() -%}
+        {%- set ns = namespace(lines=[]) -%}
+        {%- for item in state_attr(sensor_entity, 'items') or [] -%}
+          {%- if item.due == today %}{% set ns.lines = ns.lines + ['• ' ~ item.name] %}{% endif -%}
+        {%- endfor -%}
+        {{ 'You have ' ~ ns.lines | count ~ ' chore' ~ ('s' if ns.lines | count != 1 else '') ~ ' due today:\n' ~ (ns.lines | join('\n')) }}
+      data:
+        tag: "{{ sensor_entity }}_due"
+        clickAction: !input dashboard_path
+        url: !input dashboard_path
 
-mode: queued
-max: 25
+mode: single

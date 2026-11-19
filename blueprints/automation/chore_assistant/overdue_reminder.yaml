@@ -1,30 +1,87 @@
 blueprint:
   name: Chore Assistant - Overdue reminder
   description: >
-    Notify the assigned member when one of their chores goes overdue.
-    Fires on the `chore_assistant_overdue` event, which carries the chore name
-    and the assignee's linked person. Point the notify action at your mobile
-    app or a notify group.
+    At a time you choose, notify a member — and, optionally, a second person
+    (e.g. a parent) — if one or more of their chores are overdue. Sends a
+    single notification listing every overdue chore; stays silent if nothing
+    is overdue. Tapping the notification opens a dashboard.
+
+    Create one instance per member, pointing `Member sensor` at that member's
+    `sensor.<name>_overdue_chores`.
   domain: automation
   input:
-    notify_service:
-      name: Notify service
-      description: The notify service to call (e.g. notify.mobile_app_phone).
+    member_sensor:
+      name: Member sensor
+      description: The chore_assistant sensor for this member (sensor.<name>_overdue_chores).
+      selector:
+        entity:
+          integration: chore_assistant
+          domain: sensor
+    notify_assignee:
+      name: Notify service (assignee)
+      description: The member's notify service (e.g. notify.mobile_app_rylee_phone).
+      selector:
+        text:
+    notify_admin:
+      name: Notify service (second recipient)
+      description: >
+        Optional second notify service, e.g. a parent's device
+        (notify.mobile_app_ryan_phone). Leave blank to notify only the member.
+      default: ""
+      selector:
+        text:
+    reminder_time:
+      name: Reminder time
+      description: Time of day to send the overdue reminder.
+      default: "17:00:00"
+      selector:
+        time:
+    dashboard_path:
+      name: Dashboard path
+      description: >
+        Where tapping the notification goes (e.g. /lovelace/0 or
+        /chamberlin/home).
+      default: "/lovelace/0"
       selector:
         text:
 
+variables:
+  sensor_entity: !input member_sensor
+  notify_assignee: !input notify_assignee
+  notify_admin: !input notify_admin
+
 trigger:
-  - platform: event
-    event_type: chore_assistant_overdue
+  - platform: time
+    at: !input reminder_time
+
+condition:
+  - condition: template
+    value_template: >-
+      {%- set today = now().date().isoformat() -%}
+      {%- set ns = namespace(c=0) -%}
+      {%- for item in state_attr(sensor_entity, 'items') or [] -%}
+        {%- if item.due < today %}{% set ns.c = ns.c + 1 %}{% endif -%}
+      {%- endfor -%}
+      {{ ns.c > 0 }}
 
 action:
-  - service: !input notify_service
-    data:
-      title: "Chore overdue"
-      message: >-
-        {{ trigger.event.data.chore_name }} is overdue
-        {%- if trigger.event.data.member_name %} (assigned to
-        {{ trigger.event.data.member_name }}){% endif %}.
+  - repeat:
+      for_each: >-
+        {{ [notify_assignee, notify_admin] | reject('eq', '') | reject('eq', none) | list }}
+      sequence:
+        - service: "{{ repeat.item }}"
+          data:
+            title: "Chores overdue"
+            message: >-
+              {%- set today = now().date().isoformat() -%}
+              {%- set ns = namespace(lines=[]) -%}
+              {%- for item in state_attr(sensor_entity, 'items') or [] -%}
+                {%- if item.due < today %}{% set ns.lines = ns.lines + ['• ' ~ item.name ~ ' (due ' ~ item.due ~ ')'] %}{% endif -%}
+              {%- endfor -%}
+              {{ ns.lines | count ~ ' overdue chore' ~ ('s' if ns.lines | count != 1 else '') ~ ':\n' ~ (ns.lines | join('\n')) }}
+            data:
+              tag: "{{ sensor_entity }}_overdue"
+              clickAction: !input dashboard_path
+              url: !input dashboard_path
 
-mode: queued
-max: 25
+mode: single
